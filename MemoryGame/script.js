@@ -57,7 +57,7 @@ function shuffle() {
 	k = Math.floor(Math.random() * dl);
 	holder = deck[i].info;
 	deck[i].info = deck[k].info;
-	deck[k].ifno = holder;
+	deck[k].info = holder;
     }
 }
 
@@ -84,4 +84,86 @@ function drawpoly() {
     ctx.fill();
 }
 
-function drawback()
+function drawback() {
+    ctx.fillStyle = backcolor;
+    ctx.fillRect(this.sx, this.sy, this.swidth, this.sheight);
+}
+
+function choose(ev) {
+    var mx;
+    var my;
+    var pick1;
+    var pick2;
+    if (ev.layerX || ev.layerX == 0) {
+        mx = ev.layerX;
+	my = ev.layerY;
+    } else if (ev.offsetX || ev.offsetX == 0) {
+        mx = ev.offsetX;
+	my = ev.offsetY;
+    }
+    var i;
+    for (i = 0; i < deck.length; i++) {
+        var card = deck[i];
+	if (card.sx > 0) { 
+	    if ((mx > card.sx) && (mx < card.sx + card.swidth) && (my > card.sy) && (my < card.sy + card.sheight)) {
+	        if ((firstpick) || (i != firstcard)) break;
+	    }
+	}
+    }
+
+	if (i < deck.length) {
+	    if (firstpick) {
+		firstcard = i;
+		firstpick = false;
+		pick1 = new Polycard(card.sx + cardwidth * 0.5, card.sy + cardheight * 0.5, cardrad, card.info);
+		pick1.draw();
+	    } else {
+		secondcard = i;
+		pick2 = new Polycard(card.sx + cardwidth * 0.5, card.sy + cardheight * 0.5, cardrad, card.info);
+		pick2.draw();
+		if (deck[i].info == deck[firstcard].info) {
+		    matched = true;
+		    var nm = 1 + Number(document.f.count.value);
+		    document.f.count.value = String(nm);
+		    if (nm >= 0.5 * deck.length) {
+			var now = new Date();
+			var nt = Number(now.getTime());
+			var seconds = Math.floor(0.5 + (nt - starttime)/1000);
+			document.f.elapsed.value = String(seconds);
+		    }
+		} else {
+		    matched = false;
+		}
+		firstpick = true;
+		setTimeout(flipback, 1000);
+	    }
+	}
+}
+
+function flipback() {
+    if (!matched) {
+	deck[firstcard].draw();
+	deck[secondcard].draw();
+    } else {
+	ctx.fillStyle = tablecolor;
+	ctx.fillRect(deck[secondcard].sx, deck[secondcard].sy, deck[secondcard].swidth, deck[secondcard].sheight);
+	ctx.fillRect(deck[firstcard].sx, deck[firstcard].sy, deck[firstcard].swidth, deck[firstcard].sheight);
+	deck[secondcard].sx = -1;
+	deck[firstcard].sx = -1;
+    }
+}
+
+function init() {
+     ctx = document.getElementById('canvas').getContext('2d');
+     canvas1 = document.getElementById('canvas');
+     canvas1.addEventListener('click', choose, false);
+     makedeck();
+     document.f.count.value = "0";
+     document.f.elapsed.value = "";
+     starttime = new Date();
+     starttime = Number(starttime.getTime());
+     shuffle();
+}
+
+document.body.onload = init;
+
