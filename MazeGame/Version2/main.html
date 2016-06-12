@@ -1,0 +1,21 @@
+<html>
+    <head>
+        <title> Travel maze </title>
+        <script src="script.js"></script>
+    </head>
+    <body onload="init();">
+        <canvas id="canvas" width="900" height="350">
+            Your browser doesn't support the HTML5 element canvas.
+        </canvas>
+        <br/>
+        Choose level and click GET MAZE button to get a maze:
+        <form name="gf" onsubmit="return getwalls();">
+            <br/>
+            <input type="radio" value="hard" name="level"/>Hard<br/>
+            <input type="radio" value="moderate" name="level"/>Moderate<br/>
+            <input type="radio" value="easy" name="level"/>Easy<br/>
+            <input type="submit" value="GET MAZE" />
+        </form>
+        <p> Use arrow keys to move token. </p>
+    </body>
+</html>

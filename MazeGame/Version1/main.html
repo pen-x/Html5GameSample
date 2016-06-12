@@ -1,0 +1,25 @@
+<html>
+    <head>
+        <title> Build maze & travel maze </title>
+        <script src="script.js"></script>
+    </head>
+    <body onload="init();">
+        <canvas id="canvas" width="900" height="350">
+            Your browser doesn't support the HTML5 element canvas.
+        </canvas>
+        <br/>
+        Press mouse button down, dray and release to make a wall.
+        Use arrow keys to move token. <br/>
+        Pressing any other key will stop key capture and allow you to save the maze locally.
+        <form name="sf" onsubmit="return savewalls()">
+            To save your maze, enter in a name and click on the SAVE WALLS buttons. <br/>
+            Name: <input name="slname" value="maze_name" type="text" />
+            <input type="submit" value="SAVE WALLS" />
+        </form>
+        <form name="gf" onsubmit="return getwalls()">
+            To add old walls, enter in the name and click on the GET SAVED WALLS button. <br/>
+            Name: <input name="glname" value="maze_name" type="text" />
+            <input type="submit" value="GET SAVED WALLS" />
+        </form>
+    </body>
+</html>
