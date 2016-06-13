@@ -1,0 +1,18 @@
+body {
+    background-color: white;
+    color: black;
+    font-size: 18px;
+    font-family: Verdana, Geneva, sans-serif;
+}
+
+footer {
+    display: block;
+    font-family: Tahoma, Geneva, sans-serif;
+    text-align: center;
+    font-style: oblique;
+}
+
+header {
+    width: 100%;
+    display: block;
+}
