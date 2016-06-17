@@ -25,6 +25,19 @@
     }
 }());
 
+// Declare all the commonly used objects as variables for convenience
+var b2Vec2 = Box2D.Common.Math.b2Vec2;
+var b2BodyDef = Box2D.Dynamics.b2BodyDef;
+var b2Body = Box2D.Dynamics.b2Body;
+var b2FixtureDef = Box2D.Dynamics.b2FixtureDef;
+var b2Fixture = Box2D.Dynamics.b2Fixture;
+var b2World = Box2D.Dynamics.b2World;
+var b2PolygonShape = Box2D.Collision.Shapes.b2PolygonShape;
+var b2CircleShape = Box2D.Collision.Shapes.b2CircleShape;
+var b2DebugDraw = Box2D.Dynamics.b2DebugDraw;
+var b2RevoluteJointDef = Box2D.Dynamics.Joints.b2RevoluteJointDef;
+
+
 var game = {
     // Start initializing objects, preloading assets and display start screen
     init: function() {
@@ -143,11 +156,26 @@ var game = {
         game.context.drawImage(game.slingshotImage, game.slingshotX - game.offsetLeft, game.slingshotY);
         game.context.drawImage(game.slingshotFrontImage, game.slingshotX - game.offsetLeft, game.slingshotY);
 
+        // Draw all the bodies
+        game.drawAllBodies();
+
         if (!game.ended) {
             game.animationFrame = window.requestAnimationFrame(game.animate, game.canvas);
         }
-    }
+    },
 
+    drawAllBodies: function() {
+        box2d.world.DrawDebugData();
+
+        // Iterate through all the bodies and draw them on the game canvas
+        for (var body = box2d.world.GetBodyList(); body; body = body.GetNext()) {
+            var entity = body.GetUserData();
+
+            if (entity) {
+                entities.draw(entity, body.GetPosition(), body.GetAngle())
+            }
+        } 
+    }
 };
 
 var levels = {
@@ -156,7 +184,21 @@ var levels = {
         { // First Level
             foreground: 'desert-foreground',
             background: 'clouds-background',
-            entities: []
+            entities: [
+                {type: "ground", name:"dirt", x:500, y:440, width:1000, height:20, isStatic:true},
+                {type: "ground", name:"wood", x:180, y:390, width:40, height:80, isStatic:true},
+
+                {type: "block", name:"wood", x:520, y:375, angle:90, width:100, height:25},
+                {type: "block", name:"glass", x:520, y:275, angle:90, width:100, height:25},
+                {type: "villain", name:"burger", x:520, y:200, calories:590},
+
+                {type: "block", name:"wood", x:620, y:375, angle:90, width:100, height:25},
+                {type: "block", name:"glass", x:620, y:275, angle:90, width:100, height:25},
+                {type: "villain", name:"fries", x:620, y:200, calories:420},
+
+                {type: "hero", name:"orange", x:90, y:410},
+                {type: "hero", name:"apple", x:150, y:410},
+            ]
         },
         { // Second Level
             foreground: 'desert-foreground',
@@ -183,6 +225,9 @@ var levels = {
 
     // Load all data and images for a specific level
     load: function(number) {
+        // Initialize Box2D world wheneven a level is loaded
+        box2d.init();
+
         // declare a new currentlevel object
         game.currentLevel = {number: number, hero: []};
         game.score = 0;
@@ -193,6 +238,12 @@ var levels = {
         game.currentLevel.foregroundImage = loader.loadImage("images/backgrounds/" + level.foreground + ".png");
         game.slingshotImage = loader.loadImage("images/slingshot.png");
         game.slingshotFrontImage = loader.loadImage("images/slingshot-front.png");
+
+        // Load all the entities
+        for (var i = level.entities.length - 1; i >= 0; i--) {
+            var entity = level.entities[i];
+            entities.create(entity);
+        };
 
         // Call game.start() once the assets have loaded
         if (loader.loaded) {
@@ -293,6 +344,219 @@ var mouse = {
         mouse.dragging = false;
     }
 }
+
+var entities = {
+    definitions: {
+        "glass": {
+            fullHealth: 100,
+            density: 2.4,
+            friction: 0.4,
+            restitution: 0.15
+        },
+        "wood": {
+            fullHealth: 500,
+            density: 0.7,
+            friction: 0.4,
+            restitution: 0.4
+        },
+        "dirt": {
+            density: 3.0,
+            friction: 1.5,
+            restitution: 0.2
+        },
+        "burger": {
+            shape: "circle",
+            fullHealth: 40,
+            radius: 25,
+            density: 1,
+            friction: 0.5,
+            restitution: 0.4
+        },
+        "sodacan": {
+            shape: "rectangle",
+            fullHealth: 80,
+            width: 40,
+            height: 60,
+            density: 1,
+            friction: 0.5,
+            restitution: 0.7
+        },
+        "fries": {
+            shape: "rectangle",
+            fullHealth: 50,
+            width: 40,
+            height: 50,
+            density: 1,
+            friction: 0.5,
+            restitution: 0.6
+        },
+        "apple": {
+            shape: "circle",
+            radius: 25,
+            density: 1.5,
+            friction: 0.5,
+            restitution: 0.4
+        },
+        "orange": {
+            shape: "circle",
+            radius: 25,
+            density: 1.5,
+            friction: 0.5,
+            restitution: 0.4
+        },
+        "strawberry": {
+            shape: "circle",
+            radius: 15,
+            density: 2.0,
+            friction: 0.5,
+            restitution: 0.4
+        }
+    },
+
+    // take the entity, create a Box2D body, and add it to the world
+    create: function(entity) {
+        var definition = entities.definitions[entity.name];
+        if (!definition) {
+            console.log("Undefined entity name", entity.name);
+        }
+        switch(entity.type) {
+            case "block": // simple rectangles
+                entity.health = definition.fullHealth;
+                entity.fullHealth = definition.fullHealth;
+                entity.shape = "rectangle";
+                entity.sprite = loader.loadImage("images/entities/" + entity.name + ".png");
+                box2d.createRectangle(entity, definition);
+                break;
+            case "ground": // simple rectangles
+                // No need for health. These are indestructible
+                entity.shape = "rectangle";
+                // No need for sprites. These won't be drawn at all
+                box2d.createRectangle(entity, definition);
+                break;
+            case "hero": // simple circles
+            case "villain": // can be circles or rectangles
+                entity.health = definition.fullHealth;
+                entity.fullHealth = definition.fullHealth;
+                entity.sprite = loader.loadImage("images/entities/" + entity.name + ".png");
+                entity.shape = definition.shape;
+                if (definition.shape == "circle") {
+                    entity.radius = definition.radius;
+                    box2d.createCircle(entity, definition);
+                } else if (definition.shape == "rectangle") {
+                    entity.width = definition.width;
+                    entity.height = definition.height;
+                    box2d.createRectangle(entity, definition);
+                }
+                break;
+            default:
+                console.log("Undefined entity type", entity.type);
+                break;
+        }
+    },
+
+    // take the entity, its position, and its angle and draw it on the game canvas
+    draw: function(entity, position, angle) {
+        game.context.translate(position.x * box2d.scale - game.offsetLeft, position.y * box2d.scale);
+        game.context.rotate(angle);
+        switch (entity.type) {
+            case "block":
+                game.context.drawImage(entity.sprite, 0, 0, entity.sprite.width, entity.sprite.height, 
+                    -entity.width/2-1, -entity.height/2-1, entity.width+2, entity.height+2);
+                break;
+            case "villain":
+            case "hero":
+                if (entity.shape == "circle") {
+                    game.context.drawImage(entity.sprite, 0, 0, entity.sprite.width, entity.sprite.height, 
+                        -entity.radius-1, -entity.radius-1, entity.radius*2+2, entity.radius*2+2);
+                } else if (entity.shape == "rectangle") {
+                    game.context.drawImage(entity.sprite, 0, 0, entity.sprite.width, entity.sprite.height, 
+                        -entity.width/2-1, -entity.height/2-1, entity.width+2, entity.height+2);
+                }
+                break;
+            case "ground":
+                // do nothing... We will draw objects like ground & slingshot seperately
+                break;
+        }
+        game.context.rotate(-angle);
+        game.context.translate(-position.x * box2d.scale + game.offsetLeft, -position.y * box2d.scale);
+    }
+}
+
+var box2d = {
+    scale: 30,
+
+    init: function() {
+        // Set up the Box2D world that will do most of the physics calculation
+        var gravity = new b2Vec2(0, 9.8);    // declare gravity as 9.8 m/s^2 downward
+        var allowSleep = true; // Allow objects that are at rest to fall asleep and be excluded from calculations
+        box2d.world = new b2World(gravity, allowSleep);
+
+        // Set up debug draw
+        var debugContext = document.getElementById('debugcanvas').getContext('2d');
+        var debugDraw = new b2DebugDraw();
+        debugDraw.SetSprite(debugContext);
+        debugDraw.SetDrawScale(box2d.scale);
+        debugDraw.SetFillAlpha(0.3);
+        debugDraw.SetLineThickness(1.0);
+        debugDraw.SetFlags(b2DebugDraw.e_shapeBit | b2DebugDraw.e_jointBit);
+        box2d.world.SetDebugDraw(debugDraw);
+    },
+
+    createRectangle: function(entity, definition) {
+        var bodyDef = new b2BodyDef();
+        if (entity.isStatic) {
+            bodyDef.type = b2Body.b2_staticBody;
+        } else {
+            bodyDef.type = b2Body.b2_dynamicBody;
+        }
+        bodyDef.position.x = entity.x / box2d.scale;
+        bodyDef.position.y = entity.y / box2d.scale;
+        if (entity.angle) {
+            bodyDef.angle = Math.PI * entity.angle / 180;
+        }
+
+        var fixtureDef = new b2FixtureDef();
+        fixtureDef.density = definition.density;
+        fixtureDef.friction = definition.friction;        
+        fixtureDef.restitution = definition.restitution;
+        fixtureDef.shape = new b2PolygonShape();
+        fixtureDef.shape.SetAsBox(entity.width / 2 / box2d.scale, entity.height / 2 / box2d.scale);
+
+        var body = box2d.world.CreateBody(bodyDef);
+        body.SetUserData(entity);
+
+        var fixture = body.CreateFixture(fixtureDef);
+        return body;
+    },
+
+    createCircle: function(entity, definition) {
+        var bodyDef = new b2BodyDef();
+        if (entity.isStatic) {
+            bodyDef.type = b2Body.b2_staticBody;
+        } else {
+            bodyDef.type = b2Body.b2_dynamicBody;
+        }
+        bodyDef.position.x = entity.x / box2d.scale;
+        bodyDef.position.y = entity.y / box2d.scale;
+        if (entity.angle) {
+            bodyDef.angle = Math.PI * entity.angle / 180;
+        }
+
+        var fixtureDef = new b2FixtureDef();
+        fixtureDef.density = definition.density;
+        fixtureDef.friction = definition.friction;        
+        fixtureDef.restitution = definition.restitution;
+        fixtureDef.shape = new b2CircleShape(entity.radius / box2d.scale);
+
+        var body = box2d.world.CreateBody(bodyDef);
+        body.SetUserData(entity);
+
+        var fixture = body.CreateFixture(fixtureDef);
+        return body;
+    },
+}
+
+
 
 $(window).load(function() {
     game.init();
