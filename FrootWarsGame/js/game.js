@@ -46,6 +46,15 @@ var game = {
         loader.init();
         mouse.init();
 
+        // Load all sound effects and background music
+        game.backgroundMusic = loader.loadSound('audio/gurdonark-kindergarten');
+        game.slingshotReleasedSound = loader.loadSound('audio/released');
+        game.bounceSound = loader.loadSound('audio/bounce');
+        game.breakSound = {
+            'glass': loader.loadSound('audio/glassbreak'),
+            'wood': loader.loadSound('audio/woodbreak')
+        };
+
         //Hide all game layers and display the start screen
         $('.gamelayer').hide();
         $('#gamestartscreen').show();
@@ -70,6 +79,8 @@ var game = {
         // Display the game canvas and score
         $('#gamecanvas').show();
         $('#scorescreen').show();
+
+        game.startBackgroundMusic();
 
         game.mode = "intro";
         game.offsetLeft = 0;
@@ -109,6 +120,21 @@ var game = {
         return false;
     },
 
+    countHeroesAndVillains: function() {
+        game.heroes = [];
+        game.villains = [];
+        for (var body = box2d.world.GetBodyList(); body; body = body.GetNext()) {
+            var entity = body.GetUserData();
+            if (entity) {
+                if (entity.type == "hero") {
+                    game.heroes.push(body);
+                } else if (entity.type == "villain") {
+                    game.villains.push(body);
+                }
+            }
+        }
+    },
+
     handlePanning: function() {
         if (game.mode == "intro") {
             if (game.panTo(700)) {
@@ -118,27 +144,81 @@ var game = {
 
         if (game.mode == "wait-for-firing") {
             if (mouse.dragging) {
-                game.panTo(mouse.x + game.offsetLeft);
+                if (game.mouseOnCurrentHero()) {
+                    game.mode = "firing";
+                } else {
+                    game.panTo(mouse.x + game.offsetLeft);
+                }
             } else {
                 game.panTo(game.slingshotX);
             }
         }
 
         if (game.mode == "load-next-hero") {
-            // TODO:
+            game.countHeroesAndVillains();
+
             // Check if any villains are alive, if not, end the level (success)
+            if (game.villains.length == 0) {
+                game.mode = "level-success";
+                return;
+            }
+
             // Check if there are any more heroes left to load, if not end the level (failure)
+            if (game.heroes.length == 0) {
+                game.mode = "level-failure";
+                return;
+            }
+
             // Load the hero and set mode to wait-for-firing
-            game.mode = "wait-for-firing";
+            if (!game.currentHero) {
+                game.currentHero = game.heroes[game.heroes.length - 1];
+                game.currentHero.SetPosition({x: 180/box2d.scale, y: 200/box2d.scale});
+                game.currentHero.SetLinearVelocity({x: 0, y: 0});
+                game.currentHero.SetAngularVelocity(0);
+                game.currentHero.SetAwake(true);
+            } else {
+                // Wait for hero to stop bouncing and fall asleep and then switch to wait-for-firing
+                game.panTo(game.slingshotX);
+                if (!game.currentHero.IsAwake()) {
+                    game.mode = "wait-for-firing";
+                }
+            }
         }
 
         if (game.mode == "firing") {
-            game.panTo(game.slingshotX);
+            if (mouse.down) {
+                game.panTo(game.slingshotX);
+                game.currentHero.SetPosition({x: (mouse.x + game.offsetLeft) / box2d.scale, y: mouse.y / box2d.scale});
+            } else {
+                game.mode = "fired";
+                game.slingshotReleasedSound.play();
+                var impulseScaleFactor = 0.75;
+                var impulse = new b2Vec2((game.slingshotX + 35 - mouse.x - game.offsetLeft) * impulseScaleFactor,
+                    (game.slingshotY + 25 - mouse.y) * impulseScaleFactor);
+                game.currentHero.ApplyImpulse(impulse, game.currentHero.GetWorldCenter());
+            }
         }
 
         if (game.mode == "fired") {
-            // TODO:
             // Pan to wherever the hero currently is
+            var heroX = game.currentHero.GetPosition().x * box2d.scale;
+            game.panTo(heroX);
+
+            // and wait till he stops moving or is out of bounds
+            if (!game.currentHero.IsAwake() || heroX < 0 || heroX > game.currentLevel.foregroundImage.width) {
+                // then delete the old hero
+                box2d.world.DestroyBody(game.currentHero);
+                game.currentHero = undefined;
+                // and load next hero
+                game.mode = "load-next-hero";
+            }
+        }
+
+        if (game.mode == "level-success" || game.mode == "level-failure") {
+            if (game.panTo(0)) {
+                game.ended = true;
+                game.showEndingScreen();
+            }
         }
     },
 
@@ -147,6 +227,17 @@ var game = {
         game.handlePanning();
 
         // Animate the characters
+        var currentTime = new Date().getTime();
+        var timeStep;
+        if (game.lastUpdateTime) {
+            timeStep = (currentTime - game.lastUpdateTime) / 1000;
+            if (timeStep > 2 / 60) {
+                timeStep = 2 / 60;
+            }
+            box2d.step(timeStep);
+        }
+
+        game.lastUpdateTime = currentTime;
 
         // Draw the background with parallax scrolling
         game.context.drawImage(game.currentLevel.backgroundImage, game.offsetLeft/4, 0, 640, 480, 0, 0, 640, 480);
@@ -158,6 +249,14 @@ var game = {
 
         // Draw all the bodies
         game.drawAllBodies();
+
+        // Draw the band when we are firing a hero.
+        if (game.mode == "firing") {
+            game.drawSlingshotBrand();
+        }
+
+        // Draw the front of the slingshot
+        game.context.drawImage(game.slingshotFrontImage, game.slingshotX - game.offsetLeft, game.slingshotY);
 
         if (!game.ended) {
             game.animationFrame = window.requestAnimationFrame(game.animate, game.canvas);
@@ -172,10 +271,113 @@ var game = {
             var entity = body.GetUserData();
 
             if (entity) {
-                entities.draw(entity, body.GetPosition(), body.GetAngle())
+                var entityX = body.GetPosition().x * box2d.scale;
+                if (entityX < 0 || entityX > game.currentLevel.foregroundImage.width || (entity.health && entity.health < 0)) {
+                    box2d.world.DestroyBody(body);
+                    if (entity.type == "villain") {
+                        game.score += entity.calories;
+                        $('#score').html('Score: ' + game.score);
+                    }
+                    if (entity.breakSound) {
+                        entity.breakSound.play();
+                    }
+                } else {
+                    entities.draw(entity, body.GetPosition(), body.GetAngle());
+                }
             }
         } 
-    }
+    },
+
+    mouseOnCurrentHero: function() {
+        if (!game.currentHero) {
+            return false;
+        }
+        var position = game.currentHero.GetPosition();
+        var distanceSquard = Math.pow(position.x * box2d.scale - mouse.x - game.offsetLeft, 2) + Math.pow(position.y * box2d.scale - mouse.y, 2);
+        var radiusSquard = Math.pow(game.currentHero.GetUserData().radius, 2);
+        return (distanceSquard <= radiusSquard);
+    },
+
+    showEndingScreen: function() {
+        game.stopBackgroundMusic();
+        if (game.mode == "level-success") {
+            if (game.currentLevel.number < levels.data.length - 1) {
+                $('#endingmessage').html('Level Complete. Well Done!!!');
+                $('#playnextlevel').show();
+            } else {
+                $('#endingmessage').html('All Level Complete. Well Done!!!');
+                $('#playnextlevel').hide();
+            }
+        } else if (game.mode == "level-failure") {
+                $('#endingmessage').html('Failed. Play Again?');
+                $('#playnextlevel').hide();
+        }
+
+        $('#endingscreen').show();
+    },
+
+    drawSlingshotBrand: function() {
+        game.context.strokeStyle = "rgb(68, 31, 11)";
+        game.context.lineWidth = 6;
+
+        var radius = game.currentHero.GetUserData().radius;
+        var heroX = game.currentHero.GetPosition().x * box2d.scale;
+        var heroY = game.currentHero.GetPosition().y * box2d.scale;
+        var angle = Math.atan2(game.slingshotY + 25 - heroY, game.slingshotX + 50 - heroX);
+
+        var heroFarEdgeX = heroX - radius * Math.cos(angle);
+        var heroFarEdgeY = heroY - radius * Math.sin(angle);
+
+        game.context.beginPath();
+        game.context.moveTo(game.slingshotX + 50 - game.offsetLeft, game.slingshotY + 25);
+
+        game.context.lineTo(heroX - game.offsetLeft, heroY);
+        game.context.stroke();
+
+        entities.draw(game.currentHero.GetUserData(), game.currentHero.GetPosition(), game.currentHero.GetAngle());
+
+        game.context.beginPath();
+        game.context.moveTo(heroFarEdgeX - game.offsetLeft, heroFarEdgeY);
+
+        game.context.lineTo(game.slingshotX - game.offsetLeft + 10, game.slingshotY + 30);
+        game.context.stroke();
+    },
+
+    restartLevel: function() {
+        window.cancelAnimationFrame(game.animationFrame);
+        game.lastUpdateTime = undefined;
+        levels.load(game.currentLevel.number);
+    },
+
+    startNextLevel: function() {
+        window.cancelAnimationFrame(game.animationFrame);
+        game.lastUpdateTime = undefined;
+        levels.load(game.currentLevel.number + 1);
+    },
+
+    startBackgroundMusic: function() {
+        var toggleImage = $("#togglemusic")[0];
+        game.backgroundMusic.play();
+        toggleImage.src = "images/icons/sound.png";
+    },
+
+    stopBackgroundMusic: function() {
+        var toggleImage = $("#togglemusic")[0];
+        toggleImage.src = "images/icons/nosound.png";
+        game.backgroundMusic.pause();
+        game.backgroundMusic.currentTime = 0; // Go to the beginning of the song
+    },
+
+    toggleBackgroundMusic: function() {
+        var toggleImage = $("#togglemusic")[0];
+        if (game.backgroundMusic.paused) {
+            game.backgroundMusic.play();
+            toggleImage.src = "images/icons/sound.png";
+        } else {
+            game.backgroundMusic.pause();
+            toggleImage.src = "images/icons/nosound.png";
+        }
+    },
 };
 
 var levels = {
@@ -203,7 +405,28 @@ var levels = {
         { // Second Level
             foreground: 'desert-foreground',
             background: 'clouds-background',
-            entities: []
+            entities: [
+				{type:"ground", name:"dirt", x:500,y:440,width:1000,height:20,isStatic:true},
+				{type:"ground", name:"wood", x:185,y:390,width:30,height:80,isStatic:true},
+	
+				{type:"block", name:"wood", x:820,y:380,angle:90,width:100,height:25},
+				{type:"block", name:"wood", x:720,y:380,angle:90,width:100,height:25},
+				{type:"block", name:"wood", x:620,y:380,angle:90,width:100,height:25},
+				{type:"block", name:"glass", x:670,y:317.5,width:100,height:25},
+				{type:"block", name:"glass", x:770,y:317.5,width:100,height:25},				
+
+				{type:"block", name:"glass", x:670,y:255,angle:90,width:100,height:25},
+				{type:"block", name:"glass", x:770,y:255,angle:90,width:100,height:25},
+				{type:"block", name:"wood", x:720,y:192.5,width:100,height:25},	
+
+				{type:"villain", name:"burger",x:715,y:155,calories:590},
+				{type:"villain", name:"fries",x:670,y:405,calories:420},
+				{type:"villain", name:"sodacan",x:765,y:400,calories:150},
+
+				{type:"hero", name:"strawberry",x:30,y:415},
+				{type:"hero", name:"orange",x:80,y:405},
+				{type:"hero", name:"apple",x:140,y:405},
+			]
         }
     ],
 
@@ -418,6 +641,7 @@ var entities = {
         var definition = entities.definitions[entity.name];
         if (!definition) {
             console.log("Undefined entity name", entity.name);
+            return;
         }
         switch(entity.type) {
             case "block": // simple rectangles
@@ -425,6 +649,7 @@ var entities = {
                 entity.fullHealth = definition.fullHealth;
                 entity.shape = "rectangle";
                 entity.sprite = loader.loadImage("images/entities/" + entity.name + ".png");
+                entity.breakSound = game.breakSound[entity.name];
                 box2d.createRectangle(entity, definition);
                 break;
             case "ground": // simple rectangles
@@ -439,6 +664,7 @@ var entities = {
                 entity.fullHealth = definition.fullHealth;
                 entity.sprite = loader.loadImage("images/entities/" + entity.name + ".png");
                 entity.shape = definition.shape;
+                entity.bounceSound = game.bounceSound;
                 if (definition.shape == "circle") {
                     entity.radius = definition.radius;
                     box2d.createCircle(entity, definition);
@@ -500,6 +726,38 @@ var box2d = {
         debugDraw.SetLineThickness(1.0);
         debugDraw.SetFlags(b2DebugDraw.e_shapeBit | b2DebugDraw.e_jointBit);
         box2d.world.SetDebugDraw(debugDraw);
+
+        var listener = new Box2D.Dynamics.b2ContactListener();
+        listener.PostSolve = function(contact, impulse) {
+            var body1 = contact.GetFixtureA().GetBody();
+            var body2 = contact.GetFixtureB().GetBody();
+            var entity1 = body1.GetUserData();
+            var entity2 = body2.GetUserData();
+
+            var impulseAlongNormal = Math.abs(impulse.normalImpulses[0]);
+            // This listener is called a little too often. Filter out very tiny impulses.
+            // After trying different values, 5 seems to work well.
+            if (impulseAlongNormal > 5) {
+                // If objects have a health, reduce health by the impulse value
+                if (entity1.health) {
+                    entity1.health -= impulseAlongNormal;
+                }
+                if (entity2.health) {
+                    entity2.health -= impulseAlongNormal;
+                }
+
+                // If objects have a bounce sound, play the sound
+                if (entity1.bounceSound) {
+                    entity1.bounceSound.play();
+                }
+
+                if (entity2.bounceSound) {
+                    entity2.bounceSound.play();
+                }
+            }
+        };
+
+        box2d.world.SetContactListener(listener);
     },
 
     createRectangle: function(entity, definition) {
@@ -554,6 +812,18 @@ var box2d = {
         var fixture = body.CreateFixture(fixtureDef);
         return body;
     },
+
+    step: function(timeStep) {
+        // velocity iterations = 8
+        // position iterations = 3
+        if (timeStep > 2 / 60) {
+            timeStep = 2 / 60;
+        }
+
+        box2d.world.Step(timeStep, 8, 3);
+    },
+
+
 }
 
 
