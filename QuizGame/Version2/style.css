@@ -1,0 +1,16 @@
+.thing {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    border: 2px;
+    border-style: double;
+    background-color: white;
+    margin: 5px;
+    padding: 5px;
+}
+
+#vid {
+    position: absolute;
+    visibility: hidden;
+    z-index: 0;
+}

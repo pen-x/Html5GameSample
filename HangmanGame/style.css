@@ -1,0 +1,26 @@
+.letters {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    border: 2px;
+    border-style: double;
+    margin: 5px;
+    padding: 5px;
+    color: #F00;
+    background-color: #0FC;
+    font-family: "Courier New", Courier, monospace;
+}
+
+.blanks {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    border: none;
+    margin: 5px;
+    padding: 5px;
+    color: #006;
+    background-color: white;
+    font-family: "Courier New", Courier, monospace;
+    text-decoration: underline;
+    color: black;
+} 
